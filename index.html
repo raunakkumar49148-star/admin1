@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WinX - Admin Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.27/jsrsasign-all-min.js"></script>
+    <style>
+        body { margin: 0; font-family: 'Outfit', sans-serif; background: #f0f2f5; color: #1f2937; overflow: hidden; }
+        
+        /* LOGIN OVERLAY */
+        #admin-login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; }
+        .login-box { background: white; padding: 40px; border-radius: 20px; text-align: center; color: #1f2937; box-shadow: 0 20px 50px rgba(0,0,0,0.3); width: 340px; }
+        .login-box h2 { margin-top: 0; margin-bottom: 20px; color: #3b82f6; font-weight: 800; font-size: 28px; }
+        .login-box h2 span { color: #1f2937; }
+        .login-box input { width: 100%; padding: 15px; margin-bottom: 20px; border: 2px solid #e2e8f0; border-radius: 12px; box-sizing: border-box; font-size: 16px; transition: all 0.3s; }
+        .login-box input:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); }
+        .login-box button { width: 100%; padding: 15px; background: #3b82f6; color: white; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; font-size: 16px; transition: all 0.3s; }
+        .login-box button:hover { background: #2563eb; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
+
+        #admin-content-wrapper { display: none; height: 100vh; overflow-y: auto; scrollbar-width: thin; }
+
+        .sidebar { width: 260px; background: #0f172a; color: white; position: fixed; height: 100vh; padding: 30px 0; box-shadow: 4px 0 10px rgba(0,0,0,0.05); z-index: 100; }
+        .sidebar h2 { text-align: center; color: #3b82f6; margin-bottom: 40px; font-weight: 800; font-size: 24px; letter-spacing: -1px; }
+        .sidebar h2 span { color: white; }
+        .nav-link { display: flex; align-items: center; padding: 14px 25px; color: #94a3b8; text-decoration: none; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.3s; border-left: 4px solid transparent; }
+        .nav-link:hover { background: rgba(255,255,255,0.05); color: white; }
+        .nav-link.active { background: rgba(59, 130, 246, 0.1); color: #3b82f6; border-left: 4px solid #3b82f6; }
+        .nav-link i { margin-right: 15px; font-size: 18px; width: 24px; text-align: center; }
+        
+        .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
+        .card { background: white; border-radius: 20px; padding: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.05); margin-bottom: 30px; }
+        
+        h1 { margin-top: 0; font-size: 24px; margin-bottom: 25px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 10px; }
+        h1::before { content: ""; display: block; width: 4px; height: 24px; background: #3b82f6; border-radius: 2px; }
+        
+        table { width: 100%; border-collapse: separate; border-spacing: 0 8px; margin-top: 10px; }
+        th { padding: 12px 20px; text-align: left; font-weight: 700; color: #64748b; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+        td { padding: 15px 20px; background: #f8fafc; border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+        td:first-child { border-left: 1px solid #f1f5f9; border-top-left-radius: 12px; border-bottom-left-radius: 12px; }
+        td:last-child { border-right: 1px solid #f1f5f9; border-top-right-radius: 12px; border-bottom-right-radius: 12px; }
+        
+        .btn { padding: 10px 18px; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 13px; transition: all 0.3s; display: inline-flex; align-items: center; gap: 8px; }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .btn-green { background: #10b981; color: white; }
+        .btn-red { background: #ef4444; color: white; }
+        .btn-blue { background: #3b82f6; color: white; }
+        .btn-gray { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+        
+        .stat-card { position: relative; overflow: hidden; border: none; border-radius: 24px; padding: 30px; display: flex; flex-direction: column; justify-content: center; }
+        .stat-card .icon-bg { position: absolute; right: -20px; bottom: -20px; font-size: 120px; opacity: 0.15; transform: rotate(-15deg); }
+        .stat-label { font-size: 14px; font-weight: 600; opacity: 0.8; margin-bottom: 8px; }
+        .stat-value { font-size: 36px; font-weight: 900; margin-bottom: 5px; }
+        .stat-meta { font-size: 12px; font-weight: 600; opacity: 0.7; display: flex; align-items: center; gap: 5px; }
+
+        input, select, textarea { padding: 12px 15px; border: 2px solid #f1f5f9; border-radius: 12px; font-family: 'Outfit'; outline: none; transition: all 0.3s; background: #f8fafc; }
+        input:focus, select:focus, textarea:focus { border-color: #3b82f6; background: white; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); }
+        
+        .badge { padding: 6px 12px; border-radius: 50px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+        .badge-active { background: #dcfce7; color: #166534; }
+        .badge-blocked { background: #fee2e2; color: #991b1b; }
+        .badge-pending { background: #fef3c7; color: #92400e; }
+        
+        .section { display: none; animation: fadeIn 0.4s ease-out; }
+        .section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* IMAGE CONSTRAINTS */
+        img { max-width: 100px; height: auto; border-radius: 8px; }
+        table img { max-width: 40px; height: 40px; object-fit: contain; }
+        .method-logo-preview { width: 40px; height: 40px; object-fit: contain; border: 1px solid #ddd; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <!-- LOGIN SCREEN -->
+    <div id="admin-login-overlay">
+        <div class="login-box">
+            <h2>Win<span>X</span> Admin</h2>
+            <p style="margin-top:-10px; margin-bottom:20px; font-size:14px; color:#6b7280;">Secure Login Required</p>
+            <input type="password" id="admin-password" placeholder="Enter Password">
+            <button onclick="checkAdminPassword()">Login</button>
+            <p id="login-error" style="color:#ef4444; font-size:12px; margin-top:10px; display:none;">Incorrect Password!</p>
+        </div>
+    </div>
+
+    <div id="admin-content-wrapper">
+        <div class="sidebar">
+        <h2>Win<span>X</span> Admin</h2>
+        <a class="nav-link active" onclick="switchTab('dashboard')"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
+        <a class="nav-link" onclick="switchTab('users')"><i class="fa-solid fa-users"></i> Users</a>
+        <a class="nav-link" onclick="switchTab('redeem')"><i class="fa-solid fa-money-bill-transfer"></i> Redeem Requests</a>
+        <a class="nav-link" onclick="switchTab('bonus')"><i class="fa-solid fa-gift"></i> Bonus Codes</a>
+        <a class="nav-link" onclick="switchTab('notifs')"><i class="fa-solid fa-bell"></i> Notifications</a>
+        <a class="nav-link" onclick="switchTab('referrals')"><i class="fa-solid fa-user-plus"></i> Referral Stats</a>
+        <a class="nav-link" onclick="switchTab('rankings')"><i class="fa-solid fa-trophy"></i> Ranking Manager</a>
+        <a class="nav-link" onclick="switchTab('logs')"><i class="fa-solid fa-list-check"></i> Global Logs</a>
+        <a class="nav-link" onclick="switchTab('support')"><i class="fa-solid fa-headset"></i> Support Inbox</a>
+        <a class="nav-link" onclick="switchTab('updates')"><i class="fa-solid fa-cloud-arrow-up"></i> App Updates</a>
+        <a class="nav-link" onclick="switchTab('bulk')"><i class="fa-solid fa-layer-group"></i> Bulk Actions</a>
+        <a class="nav-link" onclick="switchTab('tasks')"><i class="fa-solid fa-list-check"></i> Task Offers</a>
+        <a class="nav-link" onclick="switchTab('settings')"><i class="fa-solid fa-gear"></i> Settings</a>
+    </div>
+
+    <div class="main-content">
+        
+        <!-- DASHBOARD SECTION -->
+        <div id="sec-dashboard" class="section active">
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:25px; margin-bottom:40px;">
+                <div class="stat-card" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color:white;">
+                    <div class="icon-bg"><i class="fa-solid fa-users"></i></div>
+                    <div class="stat-label">Total Users</div>
+                    <div class="stat-value" id="stat-total-users">0</div>
+                    <div class="stat-meta"><i class="fa-solid fa-user-check"></i> Registered Users</div>
+                </div>
+                
+                <div class="stat-card" style="background: linear-gradient(135deg, #10b981 0%, #047857 100%); color:white;">
+                    <div class="icon-bg"><i class="fa-solid fa-user-plus"></i></div>
+                    <div class="stat-label">New Users Today</div>
+                    <div class="stat-value" id="stat-new-users-today">0</div>
+                    <div class="stat-meta"><i class="fa-solid fa-clock"></i> Signups in last 24h</div>
+                </div>
+
+                <div class="stat-card" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color:white;">
+                    <div class="icon-bg"><i class="fa-solid fa-play"></i></div>
+                    <div class="stat-label">Lifetime Ads Served</div>
+                    <div class="stat-value" id="stat-total-ads">0</div>
+                    <div class="stat-meta"><i class="fa-solid fa-check-double"></i> All-time total</div>
+                </div>
+
+                <div class="stat-card" style="background: linear-gradient(135deg, #f43f5e 0%, #be123c 100%); color:white;">
+                    <div class="icon-bg"><i class="fa-solid fa-calendar-day"></i></div>
+                    <div class="stat-label">Today's Ads</div>
+                    <div class="stat-value" id="stat-ads-today">0</div>
+                    <div class="stat-meta"><i class="fa-solid fa-eye"></i> Viewed today</div>
+                </div>
+            </div>
+            
+            <div style="display:grid; grid-template-columns: 2fr 1fr; gap:30px;">
+                <div class="card" style="padding:30px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px;">
+                        <div>
+                            <h2 style="margin:0; font-size:20px; font-weight:800; color:#0f172a;">Performance Analytics</h2>
+                            <p style="color:#64748b; font-size:14px; margin-top:5px; font-weight:500;">User growth and ad engagement overview</p>
+                        </div>
+                        <div class="flex-row" style="background:#f1f5f9; padding:8px 15px; border-radius:10px;">
+                            <span id="realtime-dot" style="width:8px; height:8px; background:#ef4444; border-radius:50%; animation: pulse 1.5s infinite;"></span>
+                            <span style="font-size:11px; font-weight:800; color:#0f172a; text-transform:uppercase; letter-spacing:0.5px;">Live Monitor</span>
+                        </div>
+                    </div>
+                    <div style="height:400px; width:100%;">
+                        <canvas id="analyticsChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card" style="padding:30px;">
+                    <h2 style="margin:0 0 25px 0; font-size:20px; font-weight:800; color:#0f172a;">Quick Insights</h2>
+                    <div style="display:flex; flex-direction:column; gap:20px;">
+                        <div style="background:linear-gradient(to right, #f8fafc, #ffffff); padding:20px; border-radius:16px; border:1px solid #e2e8f0; display:flex; align-items:center; gap:15px;">
+                            <div style="width:48px; height:48px; background:#fee2e2; color:#ef4444; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px;"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                            <div>
+                                <p style="margin:0; font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Pending Payouts</p>
+                                <h2 id="stat-pending-redeem" style="margin:2px 0 0 0; font-size:24px; color:#0f172a; font-weight:900;">0</h2>
+                                <p style="margin:2px 0 0 0; font-size:10px; color:#ef4444; font-weight:600;">Requires attention</p>
+                            </div>
+                        </div>
+                        
+                        <div style="background:linear-gradient(to right, #f8fafc, #ffffff); padding:20px; border-radius:16px; border:1px solid #e2e8f0; display:flex; align-items:center; gap:15px;">
+                            <div style="width:48px; height:48px; background:#e0f2fe; color:#3b82f6; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px;"><i class="fa-solid fa-calendar-day"></i></div>
+                            <div>
+                                <p style="margin:0; font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Ads Served Today</p>
+                                <h2 id="stat-ads-today" style="margin:2px 0 0 0; font-size:24px; color:#0f172a; font-weight:900;">0</h2>
+                                <p style="margin:2px 0 0 0; font-size:10px; color:#3b82f6; font-weight:600;">+<span id="stat-ads-growth">0</span>% from yesterday</p>
+                            </div>
+                        </div>
+
+                        <div style="background:linear-gradient(to right, #f8fafc, #ffffff); padding:20px; border-radius:16px; border:1px solid #e2e8f0; display:flex; align-items:center; gap:15px;">
+                            <div style="width:48px; height:48px; background:#f3e8ff; color:#8b5cf6; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px;"><i class="fa-solid fa-play"></i></div>
+                            <div>
+                                <p style="margin:0; font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Lifetime Ads</p>
+                                <h2 id="stat-total-ads" style="margin:2px 0 0 0; font-size:24px; color:#0f172a; font-weight:900;">0</h2>
+                                <p style="margin:2px 0 0 0; font-size:10px; color:#8b5cf6; font-weight:600;">All-time engagement</p>
+                            </div>
+                        </div>
+
+                        <div style="background:linear-gradient(to right, #f8fafc, #ffffff); padding:20px; border-radius:16px; border:1px solid #e2e8f0; display:flex; align-items:center; gap:15px;">
+                            <div style="width:48px; height:48px; background:#ecfdf5; color:#10b981; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px;"><i class="fa-solid fa-user-plus"></i></div>
+                            <div>
+                                <p style="margin:0; font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">New Signups Today</p>
+                                <h2 id="stat-new-users-today" style="margin:2px 0 0 0; font-size:24px; color:#0f172a; font-weight:900;">0</h2>
+                                <p style="margin:2px 0 0 0; font-size:10px; color:#10b981; font-weight:600;">Real-time growth</p>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top:10px;">
+                            <button class="btn btn-blue" style="width:100%; padding:18px; border-radius:15px; font-size:14px;" onclick="switchTab('redeem')">Review Payouts <i class="fa-solid fa-arrow-right-long" style="margin-left:10px;"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top:30px; padding:25px;">
+                <h1 style="border:none; margin:0 0 20px 0; font-size:20px; font-weight:800;">Top Earners (Leaderboard)</h1>
+                <table id="top-earners-table">
+                    <thead>
+                        <tr>
+                            <th>User Email</th>
+                            <th>Total Earned</th>
+                            <th>Balance</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="top-earners-body">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <style>
+            @keyframes pulse {
+                0% { opacity: 1; transform: scale(1); }
+                50% { opacity: 0.5; transform: scale(1.2); }
+                100% { opacity: 1; transform: scale(1); }
+            }
+        </style>
+
+        <!-- USERS SECTION -->
+        <div id="sec-users" class="section">
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h1>Manage Users</h1>
+                    <div class="flex-row">
+                        <i class="fa-solid fa-magnifying-glass" style="color:#6b7280;"></i>
+                        <input type="text" id="user-search-input" placeholder="Search Email or UID..." oninput="filterUsersTable()" style="width:250px; margin:0;">
+                    </div>
+                </div>
+                <table id="users-table">
+                    <thead>
+                        <tr>
+                            <th>Email / User ID</th>
+                            <th>Balance</th>
+                            <th>Total Earned</th>
+                            <th>Ads</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- REDEEM SECTION -->
+        <div id="sec-redeem" class="section">
+            <div class="card">
+                <h1>Redeem Requests</h1>
+                <table id="redeem-table">
+                    <thead>
+                        <tr>
+                            <th>User ID</th>
+                            <th>Method</th>
+                            <th>Amount (Coins)</th>
+                            <th>Date</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- BONUS CODES SECTION -->
+        <div id="sec-bonus" class="section">
+            <div class="card">
+                <h1>Create Bonus Code</h1>
+                <div class="flex-row" style="margin-bottom: 20px;">
+                    <input type="text" id="promo-name" placeholder="Code (e.g. WELCOME500)">
+                    <input type="number" id="promo-reward" placeholder="Reward Coins">
+                    <input type="number" id="promo-max" placeholder="Max Users">
+                    <button class="btn btn-blue" onclick="createPromo()">Create Code</button>
+                </div>
+                
+                <h1>Active Bonus Codes</h1>
+                <table id="promo-table">
+                    <thead>
+                        <tr>
+                            <th>Code Name</th>
+                            <th>Reward</th>
+                            <th>Used / Max</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- NOTIFICATIONS SECTION -->
+        <div id="sec-notifs" class="section">
+            <div class="card">
+                <h1>Send Notification</h1>
+                <p style="font-size:14px; color:#6b7280; margin-bottom:20px;">This will send a message to all users.</p>
+                <div class="flex-row" style="flex-direction:column; gap:15px; max-width:500px;">
+                    <select id="notif-target" onchange="toggleUidInput()" style="width:100%; margin-bottom:10px;">
+                        <option value="all">All Users (Topic: all_users)</option>
+                        <option value="specific">Specific User (by Email)</option>
+                        <option value="active">Only Active Users</option>
+                        <option value="blocked">Only Blocked Users</option>
+                    </select>
+                    <input type="text" id="notif-uid" placeholder="Enter User Email (e.g. user@gmail.com)" style="width:100%; display:none; margin-bottom:10px;">
+                    
+                    <input type="text" id="notif-title" placeholder="Message Title (e.g. New Offer!)" style="width:100%;">
+                    <div class="flex-row" style="width:100%;">
+                        <input type="text" id="notif-img" placeholder="Image URL (Optional)" style="flex:1;">
+                        <input type="file" id="file-notif" accept="image/*" style="display:none" onchange="handleFileUpload(this, 'notif-img')">
+                        <button class="btn btn-gray" onclick="document.getElementById('file-notif').click()"><i class="fa-solid fa-upload"></i></button>
+                    </div>
+
+                    <textarea id="notif-msg" placeholder="Your message here..." style="width:100%; min-height:100px; padding:10px; border-radius:8px; border:1px solid #ddd;"></textarea>
+                    
+                    <div class="flex-row" style="width:100%; gap:20px; background:#f8fafc; padding:10px; border-radius:8px; border:1px solid #e2e8f0; margin-top:5px;">
+                        <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer; font-size:13px;">
+                            <input type="checkbox" id="notif-send-push" checked style="width:18px; height:18px;"> Push (Home Screen)
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer; font-size:13px;">
+                            <input type="checkbox" id="notif-send-inapp" checked style="width:18px; height:18px;"> In-App (History)
+                        </label>
+                    </div>
+
+                    <button class="btn btn-blue" style="padding:12px; font-size:16px; margin-top:10px;" onclick="sendNotification()">Send Notification</button>
+                </div>
+                
+                <h1 style="margin-top:40px;">Recent Notifications</h1>
+                <table id="notif-history-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Target</th>
+                            <th>Title</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="notif-history-body">
+                        <!-- Injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- REFERRALS SECTION -->
+        <div id="sec-referrals" class="section">
+            <div class="card">
+                <h1>Referral Statistics</h1>
+                <div style="display: flex; gap: 20px; margin-bottom: 30px;">
+                    <div style="flex: 1; background: #eff6ff; padding: 20px; border-radius: 10px; text-align: center;">
+                        <h2 id="admin-total-referrals" style="margin:0; font-size: 36px; color: #1e3a8a;">0</h2>
+                        <p style="margin: 5px 0 0; color: #3b82f6; font-weight: bold;">Total Successful Referrals</p>
+                    </div>
+                    <div style="flex: 1; background: #fdf4ff; padding: 20px; border-radius: 10px; text-align: center;">
+                        <h2 id="admin-total-commission" style="margin:0; font-size: 36px; color: #701a75;">0</h2>
+                        <p style="margin: 5px 0 0; color: #d946ef; font-weight: bold;">Commission Distributed</p>
+                    </div>
+                </div>
+
+                <h1>Top Referrers</h1>
+                <table id="top-referrers-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>User ID (UID)</th>
+                            <th>Name</th>
+                            <th>Total Referrals</th>
+                            <th>Referral Earnings</th>
+                        </tr>
+                    </thead>
+                    <tbody id="top-referrers-body">
+                        <!-- Injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- RANKING MANAGER SECTION -->
+        <div id="sec-rankings" class="section">
+            <div class="card" style="border-top: 5px solid #3b82f6;">
+                <h1>Ranking Manager</h1>
+                <p style="color:#64748b; font-size:14px; margin-bottom:25px;">Manage real daily top earners and add fake players to the leaderboard.</p>
+                
+                <div style="display:grid; grid-template-columns: 1fr 2fr; gap:30px;">
+                    <div>
+                        <h3 style="margin-top:0;">Add Fake Player</h3>
+                        <div style="display:flex; flex-direction:column; gap:12px; background:#f8fafc; padding:20px; border-radius:12px; border:1px solid #e2e8f0;">
+                            <input type="text" id="rank-fake-name" placeholder="User Name">
+                            <input type="number" id="rank-fake-balance" placeholder="Points/Balance">
+                            <button class="btn btn-blue" onclick="addFakeRankingV2()">+ Add Fake Player</button>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3 style="margin-top:0;">Active Ranking List (Real + Fake)</h3>
+                        <table id="ranking-manager-table">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>User</th>
+                                    <th>Daily Points</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ranking-manager-body">
+                                <!-- Injected via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GLOBAL LOGS SECTION -->
+        <div id="sec-logs" class="section">
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h1>Global Transaction Logs</h1>
+                    <button class="btn btn-gray" onclick="loadGlobalLogs()"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+                </div>
+                <table id="global-logs-table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Type</th>
+                            <th>Amount</th>
+                            <th>Reason</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="global-logs-body">
+                        <!-- Injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- SUPPORT INBOX SECTION -->
+        <div id="sec-support" class="section">
+            <div class="card">
+                <h1>User Feedback & Support</h1>
+                <p style="color:#6b7280; font-size:14px; margin-bottom:20px;">Messages sent by users from the app support section.</p>
+                <table id="support-table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Message</th>
+                            <th>Time</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="support-body">
+                        <!-- Injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- APP UPDATES SECTION -->
+        <div id="sec-updates" class="section">
+            <div class="card">
+                <h1>App Update Manager</h1>
+                <p style="color:#6b7280; font-size:14px; margin-bottom:25px;">Control app versioning and force updates for all users.</p>
+                <div style="max-width:500px; display:flex; flex-direction:column; gap:20px;">
+                    <div>
+                        <label style="display:block; font-weight:600; margin-bottom:8px;">Latest App Version Code</label>
+                        <input type="number" id="update-version" placeholder="e.g. 2" style="width:100%;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-weight:600; margin-bottom:8px;">Latest Version Name</label>
+                        <input type="text" id="update-name" placeholder="e.g. 1.0.1" style="width:100%;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-weight:600; margin-bottom:8px;">Update URL (APK/PlayStore)</label>
+                        <input type="text" id="update-url" placeholder="https://..." style="width:100%;">
+                    </div>
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; margin-top: 5px;">
+                        <label style="display:block; font-weight:600; margin-bottom:8px;"><i class="fa-solid fa-upload"></i> Or Upload New APK File</label>
+                        <input type="file" id="apk-file-input" accept=".apk" style="width:100%; margin-bottom:10px; background: white; padding: 10px; border-radius: 8px; border: 1px solid #d1d5db;">
+                        <button class="btn btn-green" id="upload-apk-btn" style="width:100%;" onclick="uploadApkFile()">Start Upload</button>
+                        
+                        <div id="upload-progress-container" style="display:none; margin-top:15px;">
+                            <div style="height:10px; background:#e2e8f0; border-radius:5px; overflow:hidden;">
+                                <div id="upload-progress-bar" style="width:0%; height:100%; background:#10b981; transition: width 0.3s;"></div>
+                            </div>
+                            <p id="upload-status" style="font-size:12px; color:#6b7280; margin-top:5px; text-align:center; font-weight:bold;">0% uploaded</p>
+                        </div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <input type="checkbox" id="update-force" style="width:20px; height:20px;">
+                        <label style="font-weight:600;">Force Update (Prevents app usage until updated)</label>
+                    </div>
+                    <button class="btn btn-blue" style="padding:12px; font-size:16px;" onclick="saveUpdateSettings()">Push Update Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- BULK ACTIONS SECTION -->
+        <div id="sec-bulk" class="section">
+            <div class="card" style="border-top: 5px solid #ef4444;">
+                <h1 style="color:#ef4444;">Massive Operations</h1>
+                <p style="color:#6b7280; font-size:14px; margin-bottom:25px;">Be careful! These actions affect ALL registered users instantly.</p>
+                
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                    <div style="background:#fef2f2; padding:20px; border-radius:12px; border:1px solid #fee2e2;">
+                        <h3 style="margin-top:0; color:#b91c1c;">Give Festive Bonus</h3>
+                        <p style="font-size:12px; color:#ef4444; margin-bottom:15px;">Send a specific amount of coins to every single user.</p>
+                        <input type="number" id="bulk-bonus-amount" placeholder="Amount (e.g. 100)" style="width:100%; margin-bottom:15px;">
+                        <input type="text" id="bulk-bonus-reason" placeholder="Reason (e.g. Diwali Bonus)" style="width:100%; margin-bottom:15px;">
+                        <button class="btn btn-red" style="width:100%;" onclick="giveBulkBonus()">Send to All Users</button>
+                    </div>
+
+                    <div style="background:#f0f9ff; padding:20px; border-radius:12px; border:1px solid #e0f2fe;">
+                        <h3 style="margin-top:0; color:#0369a1;">Clear All History</h3>
+                        <p style="font-size:12px; color:#0ea5e9; margin-bottom:15px;">Delete all transaction logs to save database space.</p>
+                        <button class="btn btn-blue" style="width:100%;" onclick="clearAllLogs()">Wipe All History</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TASK OFFERS SECTION -->
+        <div id="sec-tasks" class="section">
+            <div class="card">
+                <h1>Task Offers Manager</h1>
+                <p style="font-size: 13px; color: #666; margin-bottom: 20px;">Add or manage App Download tasks.</p>
+                
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                    <h3 style="margin-top: 0; font-size: 16px;">Add/Edit Task</h3>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:15px;">
+                        <div>
+                            <label style="font-size:12px; font-weight:600;">Task Name</label>
+                            <input type="text" id="new-task-title" placeholder="e.g. Upstox App" style="width:100%">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600;">Reward (Coins)</label>
+                            <input type="number" id="new-task-reward" placeholder="e.g. 180" style="width:100%">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600;">Short Description</label>
+                            <input type="text" id="new-task-description" placeholder="e.g. Install and Register" style="width:100%">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600;">Logo URL</label>
+                            <div class="flex-row">
+                                <input type="text" id="new-task-logo" placeholder="https://..." style="flex:1">
+                                <input type="file" id="file-task-logo" accept="image/*" style="display:none" onchange="handleFileUpload(this, 'new-task-logo')">
+                                <button class="btn btn-gray" onclick="document.getElementById('file-task-logo').click()"><i class="fa-solid fa-upload"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size:12px; font-weight:600;">Steps (Separate with new lines)</label>
+                        <textarea id="new-task-steps" placeholder="1. Install app\n2. Register account" style="width:100%; height:80px;"></textarea>
+                    </div>
+                    <div style="margin-top:15px;">
+                        <label style="font-size:12px; font-weight:600;">Task Action Link</label>
+                        <input type="text" id="new-task-link" placeholder="https://..." style="width:100%; margin-bottom:15px;">
+                    </div>
+                    <button class="btn btn-blue" style="width:100%; padding:12px;" onclick="addTask()">+ Save Task Offer</button>
+                </div>
+
+                <table id="tasks-table">
+                    <thead>
+                        <tr>
+                            <th>Logo</th>
+                            <th>Name</th>
+                            <th>Reward</th>
+                            <th>Description</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tasks-body">
+                        <!-- Injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- SETTINGS SECTION -->
+        <div id="sec-settings" class="section">
+            <div class="card">
+                <h1>Social Media Links</h1>
+                <div style="display:flex; flex-direction:column; gap:15px; max-width:500px;">
+                    <div>
+                        <label>Facebook URL</label>
+                        <input type="text" id="set-facebook" placeholder="https://facebook.com/..." style="width:100%;">
+                    </div>
+                    <div>
+                        <label>Instagram URL</label>
+                        <input type="text" id="set-instagram" placeholder="https://instagram.com/..." style="width:100%;">
+                    </div>
+                    <div>
+                        <label>Telegram URL</label>
+                        <input type="text" id="set-telegram" placeholder="https://t.me/..." style="width:100%;">
+                    </div>
+                    <div>
+                        <label>YouTube URL</label>
+                        <input type="text" id="set-youtube" placeholder="https://youtube.com/..." style="width:100%;">
+                    </div>
+                    <div>
+                        <label>Play Store Rating URL</label>
+                        <input type="text" id="set-rateus" placeholder="https://play.google.com/store/apps/..." style="width:100%;">
+                    </div>
+                    
+                    <button class="btn btn-blue" style="padding:12px; font-size:16px;" onclick="saveSocialLinks()">Save Links</button>
+                </div>
+
+                <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+
+                <h1>Spin Wheel Values & Probabilities</h1>
+                <p style="font-size: 13px; color: #666; margin-bottom: 10px;">Set 8 values for the wheel slices and their winning probabilities (percentage chance).</p>
+                
+                <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:15px; max-width:600px; margin-bottom:20px; background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0;">
+                    <div style="grid-column: span 4; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 5px;"><h3 style="margin:0; font-size:14px; color:#1e293b;">Reward Values (Coins)</h3></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#64748b;">S1 Value</label><input type="number" id="spin-0" style="width:100%"></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#64748b;">S2 Value</label><input type="number" id="spin-1" style="width:100%"></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#64748b;">S3 Value</label><input type="number" id="spin-2" style="width:100%"></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#64748b;">S4 Value</label><input type="number" id="spin-3" style="width:100%"></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#64748b;">S5 Value</label><input type="number" id="spin-4" style="width:100%"></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#64748b;">S6 Value</label><input type="number" id="spin-5" style="width:100%"></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#64748b;">S7 Value</label><input type="number" id="spin-6" style="width:100%"></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#64748b;">S8 Value</label><input type="number" id="spin-7" style="width:100%"></div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:15px; max-width:600px; margin-bottom:15px; background: #fff7ed; padding: 15px; border-radius: 12px; border: 1px solid #ffedd5;">
+                    <div style="grid-column: span 4; border-bottom: 1px solid #ffedd5; padding-bottom: 5px; margin-bottom: 5px;"><h3 style="margin:0; font-size:14px; color:#9a3412;">Winning Chances (%)</h3></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#c2410c;">S1 Chance</label><input type="number" id="prob-0" placeholder="%" style="width:100%; border-color: #fdba74;"></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#c2410c;">S2 Chance</label><input type="number" id="prob-1" placeholder="%" style="width:100%; border-color: #fdba74;"></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#c2410c;">S3 Chance</label><input type="number" id="prob-2" placeholder="%" style="width:100%; border-color: #fdba74;"></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#c2410c;">S4 Chance</label><input type="number" id="prob-3" placeholder="%" style="width:100%; border-color: #fdba74;"></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#c2410c;">S5 Chance</label><input type="number" id="prob-4" placeholder="%" style="width:100%; border-color: #fdba74;"></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#c2410c;">S6 Chance</label><input type="number" id="prob-5" placeholder="%" style="width:100%; border-color: #fdba74;"></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#c2410c;">S7 Chance</label><input type="number" id="prob-6" placeholder="%" style="width:100%; border-color: #fdba74;"></div>
+                    <div><label style="font-size:11px; font-weight:700; color:#c2410c;">S8 Chance</label><input type="number" id="prob-7" placeholder="%" style="width:100%; border-color: #fdba74;"></div>
+                </div>
+                <p style="font-size: 11px; color: #9a3412; margin-bottom: 15px; font-weight: bold;">Note: Sum of all chances must be exactly 100%.</p>
+                
+                <button class="btn btn-green" style="padding:15px; font-size:16px; width:100%; max-width:600px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);" onclick="saveSpinSettings()">Save Spin Values & Chances</button>
+
+                <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+
+                <h1>Referral Settings</h1>
+                <div class="form-group">
+                    <label>Referral Reward (per friend)</label>
+                    <input type="number" id="refer-reward-val" placeholder="e.g. 500" style="width:100%">
+                </div>
+                
+                <div class="form-group">
+                    <label>Referral Rules (One per line)</label>
+                    <textarea id="refer-rules-text" placeholder="Rule 1\nRule 2\n..." style="width:100%; height:120px; padding:10px; border-radius:8px; border:1px solid #d1d5db; font-family:'Outfit';"></textarea>
+                </div>
+                
+                <h1>Milestone Rewards</h1>
+                <p style="font-size: 12px; color: #666; margin-bottom:10px;">Example: 10 completed tasks = 100 coins</p>
+                <div id="milestones-container">
+                    <div class="form-group" style="display:flex; gap:10px; margin-bottom:10px;">
+                        <input type="number" placeholder="Tasks Required" class="mile-tasks" style="flex:1">
+                        <input type="number" placeholder="Reward Coins" class="mile-reward" style="flex:1">
+                    </div>
+                </div>
+                <button class="btn btn-blue" onclick="addMilestoneRow()">+ Add Milestone</button>
+                <button class="btn btn-green" style="width:100%; margin-top:15px; padding:12px;" onclick="saveReferSettings()">Save Referral & Milestones</button>
+
+                <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+
+                <h1>Streak Rewards</h1>
+                <p style="font-size: 12px; color: #666; margin-bottom:10px;">Set rewards for consecutive days (Day 1 to Day 7)</p>
+                <div id="streak-rewards-grid" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-bottom:15px;">
+                    <div><label>Day 1</label><input type="number" id="strew-0" style="width:100%"></div>
+                    <div><label>Day 2</label><input type="number" id="strew-1" style="width:100%"></div>
+                    <div><label>Day 3</label><input type="number" id="strew-2" style="width:100%"></div>
+                    <div><label>Day 4</label><input type="number" id="strew-3" style="width:100%"></div>
+                    <div><label>Day 5</label><input type="number" id="strew-4" style="width:100%"></div>
+                    <div><label>Day 6</label><input type="number" id="strew-5" style="width:100%"></div>
+                    <div><label>Day 7</label><input type="number" id="strew-6" style="width:100%"></div>
+                </div>
+                <button class="btn btn-green" style="width:100%; padding:12px;" onclick="saveStreakRewards()">Save Streak Rewards</button>
+
+                <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+
+                <h1>Fake Leaderboard Rankings</h1>
+                <p style="font-size: 12px; color: #666; margin-bottom:10px;">Create fake user entries for the leaderboard.</p>
+                <div class="flex-row" style="margin-bottom: 20px; display:flex; gap:10px;">
+                    <input type="text" id="fake-name" placeholder="User Name" style="flex:1">
+                    <input type="number" id="fake-balance" placeholder="Balance (Coins)" style="flex:1">
+                    <button class="btn btn-blue" onclick="addFakeRanking()">Add Fake User</button>
+                </div>
+                <table id="fake-rankings-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Balance</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fake-rankings-body"></tbody>
+                </table>
+
+                <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+
+                <h1>App Content & Graphics</h1>
+                <p style="font-size: 12px; color: #666; margin-bottom:15px;">Paste URLs to change app visuals and referral text.</p>
+                
+                <div style="display:flex; flex-direction:column; gap:15px; max-width:600px;">
+                    <div>
+                        <label>Refer Share Text</label>
+                        <textarea id="set-refer-text" style="width:100%; height:60px;" placeholder="Use my code {code} to get free coins!"></textarea>
+                    </div>
+                    <div>
+                        <label>App Avatar/Logo URL</label>
+                        <div class="flex-row">
+                            <input type="text" id="img-avatar" style="flex:1" placeholder="https://...">
+                            <input type="file" id="file-avatar" accept="image/*" style="display:none" onchange="handleFileUpload(this, 'img-avatar')">
+                            <button class="btn btn-gray" onclick="document.getElementById('file-avatar').click()"><i class="fa-solid fa-upload"></i></button>
+                        </div>
+                    </div>
+                    <div>
+                        <label>Spin Wheel Image URL</label>
+                        <div class="flex-row">
+                            <input type="text" id="img-spin" style="flex:1" placeholder="https://...">
+                            <input type="file" id="file-spin" accept="image/*" style="display:none" onchange="handleFileUpload(this, 'img-spin')">
+                            <button class="btn btn-gray" onclick="document.getElementById('file-spin').click()"><i class="fa-solid fa-upload"></i></button>
+                        </div>
+                    </div>
+                    <div>
+                        <label>Invite Page Hero Image URL</label>
+                        <div class="flex-row">
+                            <input type="text" id="img-invite" style="flex:1" placeholder="https://...">
+                            <input type="file" id="file-invite" accept="image/*" style="display:none" onchange="handleFileUpload(this, 'img-invite')">
+                            <button class="btn btn-gray" onclick="document.getElementById('file-invite').click()"><i class="fa-solid fa-upload"></i></button>
+                        </div>
+                    </div>
+                    <div>
+                        <label>Streak Reward Icon URL</label>
+                        <div class="flex-row">
+                            <input type="text" id="img-streak" style="flex:1" placeholder="https://...">
+                            <input type="file" id="file-streak" accept="image/*" style="display:none" onchange="handleFileUpload(this, 'img-streak')">
+                            <button class="btn btn-gray" onclick="document.getElementById('file-streak').click()"><i class="fa-solid fa-upload"></i></button>
+                        </div>
+                    </div>
+                    <button class="btn btn-blue" onclick="saveAppContent()">Save App Content</button>
+
+                </div>
+
+                <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div>
+                        <h1 style="color: #3b82f6; margin: 0;"><i class="fa-solid fa-building-columns"></i> Withdrawal Methods Manager</h1>
+                        <p style="font-size: 13px; color: #666; margin: 5px 0 0 0;">Add or manage payment methods like UPI, Crypto, etc.</p>
+                    </div>
+                    <button class="btn btn-gray" onclick="restoreDefaultMethods()" style="font-size: 12px; padding: 8px 15px;">
+                        <i class="fa-solid fa-rotate-left"></i> Restore Defaults
+                    </button>
+                </div>
+                
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                    <h3 id="method-form-title" style="margin-top: 0; font-size: 16px;">Add New Method</h3>
+                    <input type="hidden" id="edit-method-id">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:15px;">
+                        <div>
+                            <label style="font-size:12px; font-weight:600;">Method Name</label>
+                            <input type="text" id="new-method-name" placeholder="e.g. Crypto" style="width:100%">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600;">Logo URL</label>
+                            <div class="flex-row">
+                                <input type="text" id="new-method-logo" placeholder="https://..." style="flex:1" oninput="document.getElementById('logo-preview').src = this.value; document.getElementById('logo-preview').style.display = 'block';">
+                                <img id="logo-preview" src="" style="width:40px; height:40px; margin-left:10px; border-radius:8px; display:none; background:#f3f4f6; object-fit: contain;">
+                                <input type="file" id="file-method-logo" accept="image/*" style="display:none" onchange="handleFileUpload(this, 'new-method-logo')">
+                                <button class="btn btn-gray" onclick="document.getElementById('file-method-logo').click()"><i class="fa-solid fa-upload"></i></button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label style="font-size:12px; font-weight:600;">User Info Label</label>
+                            <input type="text" id="new-method-label" placeholder="e.g. Wallet Address" style="width:100%">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600;">Sub-Options (Optional)</label>
+                            <input type="text" id="new-method-subs" placeholder="e.g. Bitcoin, USDT, Solana" style="width:100%">
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size:12px; font-weight:600;">Rupee Amounts (Comma separated)</label>
+                        <input type="text" id="new-method-amounts" placeholder="e.g. 50, 100, 500" style="width:100%; margin-bottom:15px;">
+                    </div>
+                    <button id="btn-add-method" class="btn btn-blue" style="width:100%; padding:12px;" onclick="addWithdrawMethod()">+ Add Payment Method</button>
+                    <button id="btn-cancel-edit" class="btn btn-gray" style="width:100%; padding:12px; margin-top:10px; display:none;" onclick="cancelEditMethod()">Cancel Edit</button>
+                </div>
+
+                <table id="withdraw-methods-table">
+                    <thead>
+                        <tr>
+                            <th>Logo</th>
+                            <th>Method</th>
+                            <th>Field</th>
+                            <th>Subs</th>
+                            <th>Amounts</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="withdraw-methods-body">
+                        <!-- Injected via JS -->
+                    </tbody>
+                </table>
+
+                <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+
+                <div style="background: #fdf2f8; border: 1px solid #fbcfe8; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                    <h1 style="color: #be185d; margin:0 0 10px 0;"><i class="fa-solid fa-calendar-check"></i> Daily Check-In Settings</h1>
+                    <p style="font-size: 13px; color: #9d174d; margin-bottom:15px;">Configure the rewards and probability chances for the daily check-in feature.</p>
+                    
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:15px;">
+                        <div>
+                            <label style="font-weight:700; color:#be185d;">Tier 1 Amount</label>
+                            <input type="number" id="checkin-amt-1" placeholder="e.g. 5" style="width:100%; border-color:#fbcfe8;">
+                        </div>
+                        <div>
+                            <label style="font-weight:700; color:#be185d;">Tier 1 Chance (%)</label>
+                            <input type="number" id="checkin-prob-1" placeholder="e.g. 70" style="width:100%; border-color:#fbcfe8;">
+                        </div>
+
+                        <div>
+                            <label style="font-weight:700; color:#be185d;">Tier 2 Amount</label>
+                            <input type="number" id="checkin-amt-2" placeholder="e.g. 10" style="width:100%; border-color:#fbcfe8;">
+                        </div>
+                        <div>
+                            <label style="font-weight:700; color:#be185d;">Tier 2 Chance (%)</label>
+                            <input type="number" id="checkin-prob-2" placeholder="e.g. 25" style="width:100%; border-color:#fbcfe8;">
+                        </div>
+
+                        <div>
+                            <label style="font-weight:700; color:#be185d;">Tier 3 Amount</label>
+                            <input type="number" id="checkin-amt-3" placeholder="e.g. 50" style="width:100%; border-color:#fbcfe8;">
+                        </div>
+                        <div>
+                            <label style="font-weight:700; color:#be185d;">Tier 3 Chance (%)</label>
+                            <input type="number" id="checkin-prob-3" placeholder="e.g. 5" style="width:100%; border-color:#fbcfe8;">
+                        </div>
+                    </div>
+                    <p style="font-size:11px; color:#be185d; margin-bottom:15px;">Note: Probabilities should add up to 100%.</p>
+                    <button class="btn btn-red" style="width:100%; padding:12px; background:#db2777;" onclick="saveCheckInSettings()">Save Check-In Settings</button>
+                </div>
+
+                <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+
+
+                <div id="sec-coin-value" class="card" style="background: #fffbeb; border: 1px solid #fde68a;">
+                    <h1 style="color: #92400e;">Coin Value (Economy)</h1>
+                    <p style="font-size: 13px; color: #92400e; margin-bottom:15px;">Set how many coins equal 1 Rupee.</p>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="flex:1">
+                            <label style="color: #92400e;">1 Rupee = X Coins</label>
+                            <input type="number" id="set-coin-rate" style="width:100%; border-color:#fde68a" placeholder="e.g. 100">
+                        </div>
+                        <button class="btn btn-green" style="margin-top:20px;" onclick="saveEconomySettings()">Save Rate</button>
+                    </div>
+                </div>
+
+                <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+
+                <h1>App Download Link</h1>
+                <div style="display:flex; flex-direction:column; gap:15px; max-width:600px;">
+                    <div>
+                        <label>App Download URL (For Sharing)</label>
+                        <input type="text" id="set-app-url" style="width:100%" placeholder="https://play.google.com/store/apps/details?id=...">
+                    </div>
+                    <button class="btn btn-blue" onclick="saveEconomySettings()">Save URL</button>
+                </div>
+
+                <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+
+                <div style="display:flex; flex-direction:column; gap:15px; max-width:600px;">
+                    <div>
+                        <label>Support Email</label>
+                        <input type="text" id="set-support-email" style="width:100%" placeholder="support@winx.com">
+                    </div>
+                    <div>
+                        <label>WhatsApp Support Number</label>
+                        <input type="text" id="set-support-whatsapp" style="width:100%" placeholder="+91 1234567890">
+                    </div>
+                    <div>
+                        <label>Mobile Support Number</label>
+                        <input type="text" id="set-support-phone" style="width:100%" placeholder="+91 1234567890">
+                    </div>
+                    <button class="btn btn-blue" onclick="saveContactSettings()">Save Contact Info</button>
+                </div>
+
+                <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+                
+                <h1>Scratch Card Settings</h1>
+                <div style="display:flex; flex-direction:column; gap:15px; max-width:600px; background:#f0fdf4; padding:20px; border-radius:12px; border:1px solid #bbf7d0;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <input type="checkbox" id="set-scratch-enabled" style="width:20px; height:20px;">
+                        <label style="font-weight:700; color:#166534;">Enable Scratch Card Feature</label>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                        <div>
+                            <label>Daily Card Limit</label>
+                            <input type="number" id="set-scratch-limit" style="width:100%" placeholder="e.g. 5">
+                        </div>
+                        <div>
+                            <label>Reward Range (Min - Max)</label>
+                            <div style="display:flex; gap:10px;">
+                                <input type="number" id="set-scratch-min" style="flex:1" placeholder="Min">
+                                <input type="number" id="set-scratch-max" style="flex:1" placeholder="Max">
+                            </div>
+                        </div>
+                    </div>
+                    <button class="btn btn-green" onclick="saveScratchSettings()">Save Scratch Settings</button>
+                </div>
+
+                <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+
+                <h1 style="color:#ef4444;">Advanced / Developer Settings</h1>
+                <div style="display:flex; flex-direction:column; gap:20px; max-width:600px; background:#fff1f2; padding:20px; border-radius:12px; border:1px solid #fecaca;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <input type="checkbox" id="set-maintenance" style="width:20px; height:20px;">
+                        <label style="font-weight:700; color:#b91c1c;">Enable Maintenance Mode</label>
+                    </div>
+                    <div>
+                        <label>Maintenance Message</label>
+                        <textarea id="set-maintenance-msg" style="width:100%; height:60px;"></textarea>
+                    </div>
+                    <hr>
+                    <div>
+                        <label>Privacy Policy URL</label>
+                        <input type="text" id="set-privacy-url" style="width:100%;" placeholder="https://...">
+                    </div>
+                    <hr>
+                    <div>
+                        <label>AdMob Banner ID</label>
+                        <input type="text" id="set-ad-banner" style="width:100%;">
+                    </div>
+                    <div>
+                        <label>AdMob Interstitial ID</label>
+                        <input type="text" id="set-ad-inter" style="width:100%;">
+                    </div>
+                    <div>
+                        <label>AdMob Rewarded ID</label>
+                        <input type="text" id="set-ad-reward" style="width:100%;">
+                    </div>
+                    <hr>
+                    <div style="background: #fff7ed; padding: 15px; border-radius: 10px; border: 1px solid #ffedd5;">
+                        <label style="color: #9a3412; font-weight: 700;"><i class="fa-solid fa-file-code"></i> FCM Service Account JSON</label>
+                        <p style="font-size: 11px; color: #c2410c; margin-bottom: 8px;">Paste your full Firebase Service Account JSON here.</p>
+                        <textarea id="set-fcm-json" placeholder='{"type": "service_account", ...}' style="width:100%; height:150px; font-family: monospace; font-size:11px; border: 1px solid #fb923c; padding:10px;"></textarea>
+                    </div>
+                    <hr>
+                    <div>
+                        <label>Minimum Withdrawal Amount (Coins)</label>
+                        <input type="number" id="set-min-withdraw" style="width:100%;">
+                    </div>
+                    <div>
+                        <label>Daily Spin Limit</label>
+                        <input type="number" id="set-spin-limit" style="width:100%;">
+                    </div>
+                    <div>
+                        <label>Math Game Reward per Question</label>
+                        <input type="number" id="set-math-reward" style="width:100%;">
+                    </div>
+                    <hr>
+                    <h3 style="font-size:16px; color:#1e40af;">Reward Settings</h3>
+                    <hr>
+                    <div style="margin-top: 15px;">
+                        <label style="color: #1e3a8a; font-weight: 700;">🎁 New User Signup Bonus (Coins)</label>
+                        <input type="number" id="set-signup-bonus" style="width:100%;" placeholder="e.g. 517">
+                    </div>
+                    <div style="background: #fffbeb; padding: 15px; border-radius: 10px; border: 1px solid #fde68a; margin-top: 10px;">
+                        <p style="font-size: 11px; color: #b45309; margin-bottom: 8px;">यह मैसेज यूज़र की होम स्क्रीन पर पीले बैनर में दिखेगा। खाली छोड़ने पर बैनर छुप जाएगा।</p>
+                        <textarea id="set-announcement" placeholder="यहाँ मैसेज लिखें..." style="width:100%; height:80px; border: 1px solid #fcd34d; border-radius: 8px; padding: 10px;"></textarea>
+                    </div>
+                    <div style="background: #eff6ff; padding: 15px; border-radius: 10px; border: 1px solid #bfdbfe; margin-top: 10px;">
+                        <label style="color: #1e40af; font-weight: 700;">🔔 Startup Popup Notice (Modal)</label>
+                        <p style="font-size: 11px; color: #3b82f6; margin-bottom: 8px;">यह मैसेज ऐप खुलते ही पॉप-अप के रूप में दिखेगा।</p>
+                        <textarea id="set-startup-notice" placeholder="Startup modal message..." style="width:100%; height:80px; border: 1px solid #3b82f6; border-radius: 8px; padding: 10px;"></textarea>
+                    </div>
+                    <hr>
+                    <h3 style="margin-top:20px; font-size:16px; color: #1e40af;"><i class="fa-solid fa-wand-magic-sparkles"></i> Advanced Super Offers Settings</h3>
+                    <p style="font-size: 11px; color: #1e40af; margin-bottom: 12px;">Manage daily limits, cooldowns, and dynamic reward tiers.</p>
+                    
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:15px; background: #f1f5f9; padding: 15px; border-radius: 12px;">
+                        <div>
+                            <label style="font-size:12px; font-weight:700;">Daily Redemption Limit</label>
+                            <input type="number" id="set-offer-daily-limit" style="width:100%;" placeholder="e.g. 10">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:700;">Cooldown between Offers (Mins)</label>
+                            <input type="number" id="set-offer-cooldown-mins" style="width:100%;" placeholder="e.g. 60">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:700;">Number of Offers to Show</label>
+                            <input type="number" id="set-offer-count" style="width:100%;" placeholder="e.g. 2">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:700;">Offers Status</label>
+                            <select id="set-offer-status" style="width:100%; padding:10px; border-radius:8px; border:1px solid #d1d5db;">
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="background: #eff6ff; padding: 20px; border-radius: 15px; border: 1px solid #bfdbfe; margin-bottom: 20px;">
+                        <h4 style="margin-top: 0; color: #1e40af;"><i class="fa-solid fa-1"></i> Super Offer Slot 1 - Reward Tiers</h4>
+                        <p style="font-size: 11px; color: #1e40af; margin-bottom: 10px;">Add multiple reward tiers. The app will pick one based on the probabilities (should sum to 100%).</p>
+                        <div id="slot-1-tiers-container" style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;">
+                            <!-- Dynamic Rows -->
+                        </div>
+                        <button class="btn btn-blue" style="width:100%; font-size:12px; padding:8px;" onclick="addSuperOfferRow(1)">+ Add Tier to Slot 1</button>
+                    </div>
+
+                    <div style="background: #fdf2f8; padding: 20px; border-radius: 15px; border: 1px solid #fbcfe8; margin-bottom: 20px;">
+                        <h4 style="margin-top: 0; color: #be185d;"><i class="fa-solid fa-2"></i> Super Offer Slot 2 - Reward Tiers</h4>
+                        <p style="font-size: 11px; color: #be185d; margin-bottom: 10px;">Add multiple reward tiers. The app will pick one based on the probabilities (should sum to 100%).</p>
+                        <div id="slot-2-tiers-container" style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;">
+                            <!-- Dynamic Rows -->
+                        </div>
+                        <button class="btn btn-red" style="width:100%; font-size:12px; padding:8px; background:#db2777;" onclick="addSuperOfferRow(2)">+ Add Tier to Slot 2</button>
+                    </div>
+
+                    <button class="btn btn-blue" style="width:100%; padding:15px; font-size:16px; font-weight:bold; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);" onclick="saveAdvancedSettings()">Save All Advanced Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <style>
+            .super-offer-tier-row {
+                background: white;
+                padding: 15px;
+                border-radius: 10px;
+                border: 1px solid #e2e8f0;
+                display: grid;
+                grid-template-columns: 1fr 1fr 1fr 1fr 1fr 40px;
+                gap: 10px;
+                align-items: end;
+            }
+            .super-offer-tier-row label {
+                font-size: 10px;
+                font-weight: 700;
+                color: #64748b;
+                display: block;
+                margin-bottom: 4px;
+            }
+            .super-offer-tier-row input {
+                width: 100%;
+                padding: 8px;
+                font-size: 12px;
+            }
+        </style>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL FOR USER HISTORY -->
+        <div id="history-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:10000; justify-content:center; align-items:center; padding:20px;">
+            <div class="card" style="width:100%; max-width:800px; max-height:80vh; overflow-y:auto; position:relative;">
+                <button onclick="closeHistoryModal()" style="position:absolute; top:10px; right:10px; border:none; background:none; font-size:24px; cursor:pointer;">&times;</button>
+                <h1 id="history-user-title">User Transaction History</h1>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Amount</th>
+                            <th>Reason</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-table-body">
+                        <!-- Injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>
