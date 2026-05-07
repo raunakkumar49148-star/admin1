@@ -392,19 +392,21 @@ async function getFCMAccessToken(serviceAccount) {
         const body = `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${sJWT}`;
 
         const proxies = [
+            (url) => `https://cors-anywhere.herokuapp.com/${url}`,
+            (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
             (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-            (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-            (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+            (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`
         ];
 
         let response = null;
         let lastError = null;
+        let usedProxy = "";
 
         for(const getProxyUrl of proxies) {
             try {
-                const proxyUrl = getProxyUrl(tokenUrl);
-                console.log("Trying proxy for token:", proxyUrl);
-                response = await fetch(proxyUrl, {
+                usedProxy = getProxyUrl(tokenUrl);
+                console.log("Trying proxy for token:", usedProxy);
+                response = await fetch(usedProxy, {
                     method: "POST",
                     headers: { "Content-Type": "application/x-www-form-urlencoded" },
                     body: body
@@ -417,7 +419,10 @@ async function getFCMAccessToken(serviceAccount) {
         }
 
         if(!response || !response.ok) {
-            throw new Error("All proxies failed for token generation. Last error: " + lastError);
+            if(lastError && lastError.includes("Missing required request header. Must specify one of: origin,x-requested-with")) {
+                alert("🔴 CORS BLOCK: Please visit https://cors-anywhere.herokuapp.com/corsdemo and click 'Request temporary access' to unblock your browser.");
+            }
+            throw new Error(`All proxies failed. Last used: ${usedProxy}. Error: ${lastError}`);
         }
 
         const data = await response.json();
@@ -523,9 +528,10 @@ async function sendNotification() {
                 else payload.message.token = target;
 
                 const proxies = [
+                    (url) => `https://cors-anywhere.herokuapp.com/${url}`,
+                    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
                     (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-                    (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-                    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+                    (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`
                 ];
 
                 let response = null;
