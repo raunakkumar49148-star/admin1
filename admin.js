@@ -74,6 +74,7 @@ function unlockAdmin() {
         loadRankingManager();
         loadDashboardRanking();
         loadTasksManager();
+        loadOfferClicks();
     } catch (e) {
         console.error("Error loading admin data:", e);
     }
@@ -84,8 +85,16 @@ function switchTab(tabId) {
     document.querySelectorAll('.section').forEach(sec => sec.classList.remove('active'));
     document.querySelectorAll('.nav-link').forEach(nav => nav.classList.remove('active'));
     
-    document.getElementById('sec-' + tabId).classList.add('active');
-    event.target.classList.add('active');
+    const targetSec = document.getElementById('sec-' + tabId);
+    if(targetSec) targetSec.classList.add('active');
+    
+    // Handle active state for nav links manually if event is missing
+    const currentEvent = window.event;
+    if (currentEvent) {
+        let navBtn = currentEvent.currentTarget || currentEvent.target;
+        if (navBtn && (navBtn.tagName === 'I' || navBtn.tagName === 'SPAN')) navBtn = navBtn.parentElement;
+        if (navBtn && navBtn.classList.contains('nav-link')) navBtn.classList.add('active');
+    }
 }
 
 // ---------------------- USERS MANAGEMENT ----------------------
@@ -373,18 +382,52 @@ async function getFCMAccessToken(serviceAccount) {
         const sPayload = JSON.stringify(claims);
         const privateKey = serviceAccount.private_key;
 
+        if (!privateKey || !serviceAccount.client_email) {
+            throw new Error("Missing private_key or client_email in Service Account JSON.");
+        }
+
         const sJWT = KJUR.jws.JWS.sign("RS256", sHeader, sPayload, privateKey);
 
-        const response = await fetch("https://oauth2.googleapis.com/token", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${sJWT}`
-        });
+        const tokenUrl = "https://oauth2.googleapis.com/token";
+        const body = `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${sJWT}`;
+
+        const proxies = [
+            (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+            (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+            (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+        ];
+
+        let response = null;
+        let lastError = null;
+
+        for(const getProxyUrl of proxies) {
+            try {
+                const proxyUrl = getProxyUrl(tokenUrl);
+                console.log("Trying proxy for token:", proxyUrl);
+                response = await fetch(proxyUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: body
+                });
+                if(response.ok) break;
+                else lastError = await response.text();
+            } catch (e) {
+                lastError = e.message;
+            }
+        }
+
+        if(!response || !response.ok) {
+            throw new Error("All proxies failed for token generation. Last error: " + lastError);
+        }
 
         const data = await response.json();
+        if (data.error) {
+            throw new Error("Google OAuth Error: " + (data.error_description || data.error));
+        }
         return data.access_token;
     } catch (e) {
         console.error("Token Generation Error:", e);
+        alert("CRITICAL Token Error: " + e.message);
         return null;
     }
 }
@@ -409,122 +452,155 @@ async function sendNotification() {
         return;
     }
 
-    let pushSent = false;
-    if(doPush) {
-        // Get Service Account from Settings
-        let serviceAccount;
-        try {
-            serviceAccount = JSON.parse(advancedSettings.fcm_json);
-        } catch (e) {
-            alert("CRITICAL: FCM Service Account JSON is invalid or not set! Check Settings tab.");
-            return;
-        }
-
-        const accessToken = await getFCMAccessToken(serviceAccount);
-        if(!accessToken) {
-            alert("Error generating Access Token. Check if your Service Account JSON is correct.");
-            return;
-        }
-
-        const sendFCMv1 = async (target, isTopic = false) => {
-            const url = `https://fcm.googleapis.com/v1/projects/${serviceAccount.project_id}/messages:send`;
-            
-            const payload = {
-                message: {
-                    notification: { title, body: message },
-                    data: { title, message, image: imageUrl || "", screen: "home-screen" },
-                    android: {
-                        notification: {
-                            icon: "ic_launcher",
-                            color: "#3b82f6"
-                        }
-                    }
-                }
-            };
-
-            if(imageUrl) payload.message.notification.image = imageUrl;
-            if(isTopic) payload.message.topic = target;
-            else payload.message.token = target;
-
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json', 
-                        'Authorization': 'Bearer ' + accessToken 
-                    },
-                    body: JSON.stringify(payload)
-                });
-                const resData = await response.json();
-                console.log("FCM v1 Response:", resData);
-                if(resData.error) {
-                    console.error("FCM v1 Error:", resData.error);
-                    throw new Error(resData.error.message);
-                }
-                return true;
-            } catch (e) { 
-                console.error("FCM Fetch Error:", e); 
-                throw e;
-            }
-        };
-
-        try {
-            if(targetType === 'all') {
-                await sendFCMv1('all_users', true);
-                pushSent = true;
-            } else if(targetType === 'specific') {
-                if(!targetUid) return alert("Enter User Email");
-                
-                // Find user by email
-                const usersSnap = await db.ref('users').orderByChild('email').equalTo(targetUid.trim().toLowerCase()).once('value');
-                if(!usersSnap.exists()) {
-                    alert("No user found with this email: " + targetUid);
-                    return;
-                }
-                
-                let foundUid = null;
-                let foundData = null;
-                usersSnap.forEach(c => { foundUid = c.key; foundData = c.val(); });
-
-                if(foundData && foundData.fcm_token) {
-                    await sendFCMv1(foundData.fcm_token);
-                    pushSent = true;
-                } else {
-                    alert("This user exists but has no FCM token (they might be using a web browser or haven't allowed notifications).");
-                }
-                // Update targetUid to the real UID for In-App History storage
-                targetUid = foundUid;
-            } else {
-                const snap = await db.ref('users').once('value');
-                let count = 0;
-                snap.forEach(child => {
-                    const u = child.val();
-                    if(u.status === targetType && u.fcm_token) {
-                        sendFCMv1(u.fcm_token);
-                        count++;
-                    }
-                });
-                pushSent = true;
-            }
-        } catch (err) {
-            alert("Push Notification Failed: " + err.message);
-        }
-    }
-    
-    // Save to History (In-App)
+    // Save to History (In-App) - DO THIS FIRST
     if(doInApp) {
+        // Resolve specific UID if needed before saving
+        let finalTarget = targetType;
+        if(targetType === 'specific') {
+            const usersSnap = await db.ref('users').orderByChild('email').equalTo(targetUid.trim().toLowerCase()).once('value');
+            if(usersSnap.exists()) {
+                usersSnap.forEach(c => { finalTarget = c.key; });
+            }
+        }
         db.ref('notifications').push({
-            title, message, image: imageUrl || null, target: targetType === 'specific' ? targetUid : targetType, timestamp: Date.now()
+            title, message, image: imageUrl || null, target: finalTarget, timestamp: Date.now()
         });
     }
 
-    let successMsg = "Notification processed:";
-    if(pushSent) successMsg += "\n- Push Notification Sent";
-    if(doInApp) successMsg += "\n- Saved to In-App History";
-    alert(successMsg);
+    const btn = document.querySelector("#sec-notifs .btn-blue");
+    const originalText = btn.innerHTML;
+    
+    try {
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending...';
+        btn.disabled = true;
 
-    document.getElementById('notif-title').value = '';
-    document.getElementById('notif-msg').value = '';
+        if(doPush) {
+            const rawJson = (advancedSettings.fcm_json || '').trim();
+            if (!rawJson) {
+                alert("CRITICAL: Service Account JSON is empty! Go to Developer Settings and paste your Service Account JSON.");
+                return;
+            }
+
+            if (rawJson.includes("apiKey")) {
+                alert("ERROR: You pasted the wrong JSON (Firebase Config). Please paste 'Service Account JSON' from Firebase Console > Service Accounts.");
+                return;
+            }
+
+            const serviceAccount = JSON.parse(rawJson);
+            const accessToken = await getFCMAccessToken(serviceAccount);
+            if(!accessToken) {
+                alert("Failed to generate Google OAuth Access Token. Check console.");
+                return;
+            }
+
+            const sendFCMv1 = async (target, isTopic = false) => {
+                const baseUrl = `https://fcm.googleapis.com/v1/projects/${serviceAccount.project_id}/messages:send`;
+                const payload = {
+                    message: {
+                        notification: { title, body: message },
+                        data: { title, message, image: imageUrl || "", screen: "home-screen" },
+                        android: {
+                            priority: "high",
+                            notification: {
+                                channel_id: "default",
+                                icon: "ic_stat_name",
+                                sound: "default"
+                            }
+                        },
+                        apns: {
+                            payload: {
+                                aps: {
+                                    alert: { title, body: message },
+                                    sound: "default",
+                                    badge: 1
+                                }
+                            }
+                        }
+                    }
+                };
+                if(imageUrl) payload.message.notification.image = imageUrl;
+                if(isTopic) payload.message.topic = target;
+                else payload.message.token = target;
+
+                const proxies = [
+                    (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+                    (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+                    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+                ];
+
+                let response = null;
+                let lastError = null;
+
+                for(const getProxyUrl of proxies) {
+                    try {
+                        const proxyUrl = getProxyUrl(baseUrl);
+                        console.log("Trying proxy for FCM send:", proxyUrl);
+                        response = await fetch(proxyUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
+                            body: JSON.stringify(payload)
+                        });
+                        if(response.ok) break;
+                        else lastError = await response.text();
+                    } catch (e) {
+                        lastError = e.message;
+                    }
+                }
+
+                if (response && response.ok) {
+                    return true;
+                } else {
+                    console.error("FCM Send Error across all proxies:", lastError);
+                    alert("FCM Error: All proxies failed. Last error: " + lastError);
+                    return false;
+                }
+            };
+
+            if(targetType === 'all') {
+                pushSent = await sendFCMv1('all_users', true);
+            } else if(targetType === 'specific') {
+                const searchVal = targetUid.trim().toLowerCase();
+                let usersSnap = await db.ref('users').orderByChild('email').equalTo(searchVal).once('value');
+                
+                if(!usersSnap.exists()) {
+                    usersSnap = await db.ref('users').orderByChild('name')
+                        .startAt(targetUid.trim())
+                        .endAt(targetUid.trim() + "\uf8ff")
+                        .once('value');
+                }
+
+                if(usersSnap.exists()) {
+                    let foundData = null;
+                    usersSnap.forEach(c => { foundData = c.val(); });
+                    if(foundData && foundData.fcm_token) {
+                        pushSent = await sendFCMv1(foundData.fcm_token);
+                    } else {
+                        alert("User found but no FCM token registered for this user.");
+                    }
+                } else {
+                    alert("User not found by email or name!");
+                }
+            }
+        }
+
+        let successMsg = "";
+        if(pushSent) successMsg += "✅ Push Notification Sent\n";
+        if(doInApp) successMsg += "📝 Saved to In-App History\n";
+        
+        if (successMsg) {
+            alert("Success!\n" + successMsg);
+            document.getElementById('notif-title').value = '';
+            document.getElementById('notif-msg').value = '';
+        } else if(doPush) {
+            alert("Failed to send Push Notification. Check Developer Console for details.");
+        }
+    } catch (err) {
+        console.error("Notification Flow Error:", err);
+        alert("Notification Error: " + err.message);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
 }
 
 function loadNotificationHistory() {
@@ -733,6 +809,7 @@ function loadSettings() {
     db.ref('settings/advanced').once('value').then(snap => {
         const data = snap.val();
         if(data) {
+            advancedSettings = data; // FIX: Assign loaded data to global variable
             document.getElementById('set-maintenance').checked = data.maintenance_mode || false;
             document.getElementById('set-maintenance-msg').value = data.maintenance_msg || '';
             document.getElementById('set-ad-banner').value = data.ad_banner || '';
@@ -838,37 +915,135 @@ function saveAdvancedSettings() {
     });
 }
 
-// ---------------------- MISSING FUNCTIONS ----------------------
-
-// Add to the bottom of the file
-window.addOfferTierRow = addOfferTierRow;
-window.toggleTierInputs = toggleTierInputs;
+// Analytics and Dashboard Logic
 
 let performanceChart = null;
 
 async function loadAnalytics() {
-    db.ref('users').once('value').then(snap => {
+    const period = document.getElementById('analytics-period') ? document.getElementById('analytics-period').value : 'all';
+    const now = new Date();
+    const todayStr = now.toDateString();
+    const oneDay = 24 * 60 * 60 * 1000;
+
+    db.ref('users').once('value').then(async snap => {
         let totalUsers = 0;
         let totalAdsLifetime = 0;
+        let users = [];
+        
+        let topEarner = { name: 'None', val: 0 };
+        let topAds = { name: 'None', val: 0 };
+        let topRefs = { name: 'None', val: 0 };
+        let mostActive = { name: 'None', val: 0 };
+
         snap.forEach(child => {
             const u = child.val();
+            const uid = child.key;
             totalUsers++;
-            totalAdsLifetime += (u.total_ads || 0);
+            lifetimeAds = (u.total_ads || 0);
+            totalAdsLifetime += lifetimeAds;
+            
+            const name = u.name || u.email || uid.substring(0, 8);
+            
+            let currentVal_Earned = u.total_earned || 0;
+            let currentVal_Ads = u.total_ads || 0;
+            let currentVal_Refs = u.total_referrals || 0;
+            let currentVal_Active = (u.offers_completed || 0) + (u.total_ads || 0);
+
+            // Period Filtering Logic
+            if (period !== 'all') {
+                // If period is not 'all', we need to check if the user was active or earned in that period
+                // For Ads, we have users/{uid}/ads_today/{date}
+                // For simplicity in this large loop, we'll use 'total' if period is 'all'
+                // and approximate or use specific nodes for other periods.
+                
+                if (period === 'today') {
+                    currentVal_Ads = (u.ads_today && u.ads_today[todayStr]) ? u.ads_today[todayStr] : 0;
+                    // For earned/refs today, we'd need history. For now we use 0 or approximate.
+                    currentVal_Earned = 0; 
+                    currentVal_Refs = 0;
+                    currentVal_Active = currentVal_Ads;
+                } else if (period === '48h') {
+                    const yesterday = new Date(now.getTime() - oneDay).toDateString();
+                    currentVal_Ads = ((u.ads_today && u.ads_today[todayStr]) ? u.ads_today[todayStr] : 0) + 
+                                     ((u.ads_today && u.ads_today[yesterday]) ? u.ads_today[yesterday] : 0);
+                    currentVal_Active = currentVal_Ads;
+                }
+                // Month/Year would require more complex history traversal
+            }
+
+            // Track Top Stats
+            if(currentVal_Earned >= topEarner.val) topEarner = { name: name, val: currentVal_Earned };
+            if(currentVal_Ads >= topAds.val) topAds = { name: name, val: currentVal_Ads };
+            if(currentVal_Refs >= topRefs.val) topRefs = { name: name, val: currentVal_Refs };
+            if(currentVal_Active >= mostActive.val) mostActive = { name: name, val: currentVal_Active };
+
+            users.push({
+                uid: uid,
+                name: name,
+                earned: u.total_earned || 0,
+                balance: u.balance || 0,
+                email: u.email || 'N/A'
+            });
         });
-        document.getElementById('stat-total-users').innerText = totalUsers.toLocaleString();
-        document.getElementById('stat-total-ads').innerText = totalAdsLifetime.toLocaleString();
+
+        // Update Dashboard Cards
+        if(document.getElementById('stat-total-users')) document.getElementById('stat-total-users').innerText = totalUsers.toLocaleString();
+        if(document.getElementById('stat-total-ads')) document.getElementById('stat-total-ads').innerText = totalAdsLifetime.toLocaleString();
+        if(document.getElementById('stat-total-ads-2')) document.getElementById('stat-total-ads-2').innerText = totalAdsLifetime.toLocaleString();
+        
+        document.getElementById('stat-top-earner-name').innerText = topEarner.name;
+        document.getElementById('stat-top-earner-val').innerText = topEarner.val.toLocaleString();
+        
+        document.getElementById('stat-top-ads-name').innerText = topAds.name;
+        document.getElementById('stat-top-ads-val').innerText = topAds.val.toLocaleString();
+        
+        document.getElementById('stat-top-referrer-name').innerText = topRefs.name;
+        document.getElementById('stat-top-referrer-val').innerText = topRefs.val.toLocaleString();
+        
+        document.getElementById('stat-most-active-name').innerText = mostActive.name;
+        document.getElementById('stat-most-active-val').innerText = mostActive.val.toLocaleString();
+
+        // Populate Top Earners Table (Always show top 10 all time)
+        users.sort((a, b) => b.earned - a.earned);
+        const earnerBody = document.getElementById('top-earners-body');
+        if(earnerBody) {
+            earnerBody.innerHTML = '';
+            users.slice(0, 10).forEach(u => {
+                earnerBody.innerHTML += `
+                    <tr>
+                        <td><strong>${u.email}</strong><br><small style="color:#64748b;">${u.name}</small></td>
+                        <td style="font-weight:700; color:#10b981;">${u.earned.toLocaleString()}</td>
+                        <td>${u.balance.toLocaleString()}</td>
+                        <td><button class="btn btn-gray" onclick="viewUserHistory('${u.uid}')">View</button></td>
+                    </tr>
+                `;
+            });
+        }
+    });
+
+    // Handle today's counters
+    db.ref('analytics/ads_today/' + todayStr).on('value', snap => {
+        const val = snap.val() || 0;
+        if(document.getElementById('stat-ads-today')) document.getElementById('stat-ads-today').innerText = val.toLocaleString();
+        if(document.getElementById('stat-ads-today-2')) document.getElementById('stat-ads-today-2').innerText = val.toLocaleString();
+    });
+
+    db.ref('analytics/signups_today/' + todayStr).on('value', snap => {
+        const val = snap.val() || 0;
+        if(document.getElementById('stat-new-users-today')) document.getElementById('stat-new-users-today').innerText = val.toLocaleString();
+        if(document.getElementById('stat-new-users-today-2')) document.getElementById('stat-new-users-today-2').innerText = val.toLocaleString();
     });
 
     db.ref('redeem_requests').once('value').then(snap => {
-        let totalPaid = 0;
-        let pendingAmount = 0;
+        let totalPaid = 0; let pendingAmount = 0; let pendingCount = 0;
         snap.forEach(child => {
             const req = child.val();
             if(req.status === 'completed') totalPaid += (req.amount || 0);
-            if(req.status === 'pending') pendingAmount += (req.amount || 0);
+            if(req.status === 'pending') { pendingAmount += (req.amount || 0); pendingCount++; }
         });
-        document.getElementById('stat-total-paid').innerText = totalPaid.toLocaleString();
-        document.getElementById('stat-total-pending-amount').innerText = pendingAmount.toLocaleString();
+        if(document.getElementById('stat-total-paid')) document.getElementById('stat-total-paid').innerText = totalPaid.toLocaleString();
+        if(document.getElementById('stat-total-pending-amount')) document.getElementById('stat-total-pending-amount').innerText = pendingAmount.toLocaleString();
+        if(document.getElementById('stat-pending-redeem')) document.getElementById('stat-pending-redeem').innerText = pendingCount.toLocaleString();
     });
 
     initAnalyticsChart();
@@ -1602,210 +1777,6 @@ function uploadApkFile() {
     uploadFile();
 }
 
-// ---------------------- MISSING FUNCTIONS ----------------------
-
-function loadFakeRankings() {
-    db.ref('settings/fake_rankings').on('value', snap => {
-        const tbody = document.getElementById('fake-rankings-body');
-        if(!tbody) return;
-        tbody.innerHTML = '';
-        const data = snap.val();
-        if(data) {
-            Object.keys(data).forEach(id => {
-                const item = data[id];
-                tbody.innerHTML += `
-                    <tr>
-                        <td>${item.name}</td>
-                        <td>${item.balance}</td>
-                        <td><button class="btn btn-red" onclick="deleteFakeRanking('${id}')">Delete</button></td>
-                    </tr>
-                `;
-            });
-        }
-    });
-}
-
-function addFakeRanking() {
-    const name = document.getElementById('fake-name').value.trim();
-    const balance = document.getElementById('fake-balance').value.trim();
-    if(!name || !balance) return alert("Fill Name and Balance!");
-    db.ref('settings/fake_rankings').push({ name, balance: parseInt(balance) });
-}
-
-function deleteFakeRanking(id) {
-    db.ref('settings/fake_rankings/' + id).remove();
-}
-
-function loadAnalytics() {
-    const now = Date.now();
-    const oneDay = 24 * 60 * 60 * 1000;
-
-    // 1. User & Ad Stats
-    db.ref('users').once('value').then(snap => {
-        const totalUsers = snap.numChildren();
-        document.getElementById('stat-total-users').innerText = totalUsers;
-        
-        let newUsersToday = 0;
-        let lifetimeAds = 0;
-
-        snap.forEach(userChild => {
-            const user = userChild.val();
-            
-            // New Users Today
-            if (user.created_at && (now - user.created_at < oneDay)) {
-                newUsersToday++;
-            }
-            
-            // Lifetime Ads
-            lifetimeAds += (user.total_ads || 0);
-        });
-
-        const newUsersEl = document.getElementById('stat-new-users-today');
-        if(newUsersEl) newUsersEl.innerText = newUsersToday;
-        
-        const totalAdsEl = document.getElementById('stat-total-ads');
-        if(totalAdsEl) totalAdsEl.innerText = lifetimeAds;
-    });
-
-    // 2. Today's Ads
-    const todayStr = new Date().toDateString();
-    db.ref('analytics/ads_today/' + todayStr).on('value', snap => {
-        document.getElementById('stat-ads-today').innerText = snap.val() || 0;
-    });
-
-    // 3. Paid Out & Pending Liability
-    db.ref('redeem_requests').on('value', snap => {
-        let totalPaid = 0;
-        let totalPending = 0;
-        let pendingCount = 0;
-        
-        snap.forEach(req => {
-            const data = req.val();
-            if(data.status === 'completed') {
-                totalPaid += (data.amount || 0);
-            } else if(data.status === 'pending') {
-                totalPending += (data.amount || 0);
-                pendingCount++;
-            }
-        });
-        
-        // Update these stats if they exist in the UI (e.g. in the Quick Insights cards)
-        const paidEl = document.getElementById('stat-total-paid');
-        if(paidEl) paidEl.innerText = totalPaid;
-        
-        const pendingLiabilityEl = document.getElementById('stat-total-pending-amount');
-        if(pendingLiabilityEl) pendingLiabilityEl.innerText = totalPending;
-        
-        const pendingCountEl = document.getElementById('stat-pending-redeem');
-        if(pendingCountEl) pendingCountEl.innerText = pendingCount;
-    });
-
-    // 4. Graph History
-    db.ref('analytics/history').once('value').then(snap => {
-        const history = snap.val() || {};
-        const labels = [];
-        const signupsData = [];
-        const adsData = [];
-        
-        for(let i = 6; i >= 0; i--) {
-            const date = new Date(now - (i * oneDay));
-            const key = date.toISOString().split('T')[0];
-            labels.push(date.toLocaleDateString(undefined, { weekday: 'short' }));
-            
-            let dayData = history[key];
-            
-            // IF NO DATA EXISTS FOR THIS DAY, WE SHOW MOCK DATA FOR VISUALS
-            // (Real data will overwrite this as it accumulates)
-            if(!dayData) {
-                // Generate some low semi-random numbers for a "fresh" looking graph
-                dayData = {
-                    signups: Math.floor(Math.random() * 5) + 2,
-                    ads: Math.floor(Math.random() * 20) + 15
-                };
-            }
-
-            signupsData.push(dayData.signups || 0);
-            adsData.push(dayData.ads || 0);
-        }
-
-        const ctx = document.getElementById('analyticsChart');
-        if(!ctx) return;
-        
-        if(window.myChart) window.myChart.destroy();
-        
-        window.myChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: 'New Signups',
-                        data: signupsData,
-                        borderColor: '#10b981',
-                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                        fill: true,
-                        tension: 0.4,
-                        borderWidth: 3,
-                        pointRadius: 4,
-                        pointBackgroundColor: '#10b981'
-                    },
-                    {
-                        label: 'Ads Served',
-                        data: adsData,
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        fill: true,
-                        tension: 0.4,
-                        borderWidth: 3,
-                        pointRadius: 4,
-                        pointBackgroundColor: '#3b82f6'
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { 
-                    legend: { display: true, position: 'bottom', labels: { usePointStyle: true, font: { size: 12, weight: 'bold' } } },
-                    tooltip: { mode: 'index', intersect: false }
-                },
-                scales: { 
-                    y: { 
-                        beginAtZero: true, 
-                        grid: { color: '#f1f5f9' },
-                        ticks: { stepSize: 5 }
-                    },
-                    x: { grid: { display: false } }
-                }
-            }
-        });
-    });
-}
-
-function loadScratchSettings() {
-    db.ref('settings/scratch').once('value').then(snap => {
-        const data = snap.val();
-        if(data) {
-            document.getElementById('set-scratch-enabled').checked = data.enabled || false;
-            document.getElementById('set-scratch-limit').value = data.limit || 5;
-            document.getElementById('set-scratch-min').value = data.min || 1;
-            document.getElementById('set-scratch-max').value = data.max || 10;
-        }
-    });
-}
-
-function saveScratchSettings() {
-    const data = {
-        enabled: document.getElementById('set-scratch-enabled').checked,
-        limit: parseInt(document.getElementById('set-scratch-limit').value) || 5,
-        min: parseInt(document.getElementById('set-scratch-min').value) || 1,
-        max: parseInt(document.getElementById('set-scratch-max').value) || 10
-    };
-    db.ref('settings/scratch').update(data).then(() => alert("Scratch settings saved!"));
-}
-
-console.log("Admin Dashboard Script Loaded Successfully.");
-
 // ---------------------- RANKING MANAGER ----------------------
 
 function loadRankingManager() {
@@ -1966,3 +1937,67 @@ function deleteTask(id) {
         db.ref('settings/tasks/' + id).remove();
     }
 }
+
+// ---------------------- OFFER CLICKS TRACKING ----------------------
+
+function loadOfferClicks() {
+    db.ref('task_offer_clicks').on('value', snap => {
+        const tbody = document.getElementById('offer-clicks-body');
+        if(!tbody) return;
+        tbody.innerHTML = '';
+        if(!snap.exists()) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No clicks tracked yet.</td></tr>';
+            return;
+        }
+
+        let clicks = [];
+        snap.forEach(child => {
+            clicks.push({ id: child.key, ...child.val() });
+        });
+
+        // Sort by newest first
+        clicks.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+        clicks.forEach(c => {
+            const date = c.date || new Date(c.timestamp).toLocaleString();
+            tbody.innerHTML += `
+                <tr>
+                    <td><strong>${c.userName || 'Unknown'}</strong></td>
+                    <td><small>${c.userEmail || 'No Email'}<br>${c.uid || ''}</small></td>
+                    <td><span style="color:#f97316; font-weight:bold;">${c.taskTitle || 'Task'}</span></td>
+                    <td>${c.taskReward || 0} Coins</td>
+                    <td>${date}</td>
+                </tr>
+            `;
+        });
+    });
+}
+function viewUserHistory(uid) {
+    // Navigate to users tab and search for this UID
+    switchTab('users');
+    const searchInput = document.getElementById('user-search-input');
+    if(searchInput) {
+        searchInput.value = uid;
+        filterUsersTable();
+    }
+}
+
+function toggleUserRankVisibility(uid, currentStatus) {
+    const newStatus = !currentStatus;
+    db.ref(`users/${uid}/hidden_from_ranking`).set(newStatus).then(() => {
+        alert(newStatus ? "User hidden from ranking." : "User now visible in ranking.");
+    });
+}
+
+function restoreDefaultMethods() {
+    if(confirm("Restore default withdrawal methods (Google, Amazon, UPI)?")) {
+        const defaults = {
+            'google_default': { name: 'Google Play (IN)', logo: 'https://img.icons8.com/color/96/google-play.png', label: 'Email', amounts: [15, 30, 50], type: 'default' },
+            'amazon_default': { name: 'Amazon (IN)', logo: 'https://img.icons8.com/color/96/amazon.png', label: 'Email', amounts: [15, 30], type: 'default' },
+            'upi_default': { name: 'UPI (IN)', logo: 'https://img.icons8.com/color/96/phone-pe.png', label: 'UPI ID', amounts: [15, 30], type: 'default' }
+        };
+        db.ref('settings/withdraw_methods').update(defaults);
+    }
+}
+
+console.log("Admin Dashboard Script Fully Initialized.");
