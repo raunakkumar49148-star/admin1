@@ -14,6 +14,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.27/jsrsasign-all-min.js"></script>
     <style>
+        * { box-sizing: border-box; }
         body { margin: 0; font-family: 'Outfit', sans-serif; background: #f0f2f5; color: #1f2937; overflow: hidden; }
         
         /* LOGIN OVERLAY */
@@ -28,7 +29,9 @@
 
         #admin-content-wrapper { display: none; height: 100vh; overflow-y: auto; scrollbar-width: thin; }
 
-        .sidebar { width: 260px; background: #0f172a; color: white; position: fixed; height: 100vh; padding: 30px 0; box-shadow: 4px 0 10px rgba(0,0,0,0.05); z-index: 100; }
+        .sidebar { width: 260px; background: #0f172a; color: white; position: fixed; height: 100vh; padding: 30px 0 100px; box-shadow: 4px 0 10px rgba(0,0,0,0.05); z-index: 100; overflow-y: auto; scrollbar-width: thin; }
+        .sidebar::-webkit-scrollbar { width: 4px; }
+        .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
         .sidebar h2 { text-align: center; color: #3b82f6; margin-bottom: 40px; font-weight: 800; font-size: 24px; letter-spacing: -1px; }
         .sidebar h2 span { color: white; }
         .nav-link { display: flex; align-items: center; padding: 14px 25px; color: #94a3b8; text-decoration: none; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.3s; border-left: 4px solid transparent; }
@@ -107,6 +110,7 @@
         <a class="nav-link" onclick="switchTab('updates')"><i class="fa-solid fa-cloud-arrow-up"></i> App Updates</a>
         <a class="nav-link" onclick="switchTab('bulk')"><i class="fa-solid fa-layer-group"></i> Bulk Actions</a>
         <a class="nav-link" onclick="switchTab('tasks')"><i class="fa-solid fa-list-check"></i> Task Offers</a>
+        <a class="nav-link" onclick="switchTab('offer-clicks')"><i class="fa-solid fa-mouse-pointer"></i> Offer Clicks</a>
         <a class="nav-link" onclick="switchTab('settings')"><i class="fa-solid fa-gear"></i> Settings</a>
     </div>
 
@@ -177,7 +181,7 @@
                             <div style="width:48px; height:48px; background:#e0f2fe; color:#3b82f6; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px;"><i class="fa-solid fa-calendar-day"></i></div>
                             <div>
                                 <p style="margin:0; font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Ads Served Today</p>
-                                <h2 id="stat-ads-today" style="margin:2px 0 0 0; font-size:24px; color:#0f172a; font-weight:900;">0</h2>
+                                <h2 id="stat-ads-today-2" style="margin:2px 0 0 0; font-size:24px; color:#0f172a; font-weight:900;">0</h2>
                                 <p style="margin:2px 0 0 0; font-size:10px; color:#3b82f6; font-weight:600;">+<span id="stat-ads-growth">0</span>% from yesterday</p>
                             </div>
                         </div>
@@ -186,7 +190,7 @@
                             <div style="width:48px; height:48px; background:#f3e8ff; color:#8b5cf6; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px;"><i class="fa-solid fa-play"></i></div>
                             <div>
                                 <p style="margin:0; font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Lifetime Ads</p>
-                                <h2 id="stat-total-ads" style="margin:2px 0 0 0; font-size:24px; color:#0f172a; font-weight:900;">0</h2>
+                                <h2 id="stat-total-ads-2" style="margin:2px 0 0 0; font-size:24px; color:#0f172a; font-weight:900;">0</h2>
                                 <p style="margin:2px 0 0 0; font-size:10px; color:#8b5cf6; font-weight:600;">All-time engagement</p>
                             </div>
                         </div>
@@ -195,7 +199,7 @@
                             <div style="width:48px; height:48px; background:#ecfdf5; color:#10b981; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px;"><i class="fa-solid fa-user-plus"></i></div>
                             <div>
                                 <p style="margin:0; font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">New Signups Today</p>
-                                <h2 id="stat-new-users-today" style="margin:2px 0 0 0; font-size:24px; color:#0f172a; font-weight:900;">0</h2>
+                                <h2 id="stat-new-users-today-2" style="margin:2px 0 0 0; font-size:24px; color:#0f172a; font-weight:900;">0</h2>
                                 <p style="margin:2px 0 0 0; font-size:10px; color:#10b981; font-weight:600;">Real-time growth</p>
                             </div>
                         </div>
@@ -207,7 +211,69 @@
                 </div>
             </div>
 
-            <div class="card" style="margin-top:30px; padding:25px;">
+            <!-- Elite Performers Section -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; margin-top:30px;">
+                <h1 style="border:none; margin:0; font-size:20px; font-weight:800;">Elite Performers</h1>
+                <div class="flex-row" style="background:white; padding:5px 15px; border-radius:12px; border:1px solid #e2e8f0; gap:10px;">
+                    <i class="fa-solid fa-filter" style="color:#64748b; font-size:14px;"></i>
+                    <select id="analytics-period" onchange="loadAnalytics()" style="border:none; background:transparent; font-weight:700; color:#1e293b; outline:none; font-size:13px; padding:5px; cursor:pointer;">
+                        <option value="all">All Time</option>
+                        <option value="today">Today (Last 24h)</option>
+                        <option value="48h">Last 48 Hours</option>
+                        <option value="month">This Month</option>
+                        <option value="year">This Year</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Elite Performers Grid -->
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap:25px; margin-top:30px; margin-bottom:30px;">
+                <div class="card" style="padding:20px; border-left: 5px solid #facc15;">
+                    <div style="display:flex; align-items:center; gap:15px;">
+                        <div style="width:50px; height:50px; background:#fef9c3; color:#a16207; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:24px;"><i class="fa-solid fa-crown"></i></div>
+                        <div>
+                            <p style="margin:0; font-size:12px; color:#64748b; font-weight:700; text-transform:uppercase;">Top Earner</p>
+                            <h3 id="stat-top-earner-name" style="margin:5px 0 0 0; font-size:16px; color:#0f172a; font-weight:800;">Loading...</h3>
+                            <p style="margin:2px 0 0 0; font-size:11px; color:#a16207; font-weight:600;"><span id="stat-top-earner-val">0</span> Coins</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" style="padding:20px; border-left: 5px solid #3b82f6;">
+                    <div style="display:flex; align-items:center; gap:15px;">
+                        <div style="width:50px; height:50px; background:#e0f2fe; color:#1d4ed8; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:24px;"><i class="fa-solid fa-video"></i></div>
+                        <div>
+                            <p style="margin:0; font-size:12px; color:#64748b; font-weight:700; text-transform:uppercase;">Top Ad Watcher</p>
+                            <h3 id="stat-top-ads-name" style="margin:5px 0 0 0; font-size:16px; color:#0f172a; font-weight:800;">Loading...</h3>
+                            <p style="margin:2px 0 0 0; font-size:11px; color:#1d4ed8; font-weight:600;"><span id="stat-top-ads-val">0</span> Ads</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" style="padding:20px; border-left: 5px solid #d946ef;">
+                    <div style="display:flex; align-items:center; gap:15px;">
+                        <div style="width:50px; height:50px; background:#fdf4ff; color:#a21caf; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:24px;"><i class="fa-solid fa-users-rays"></i></div>
+                        <div>
+                            <p style="margin:0; font-size:12px; color:#64748b; font-weight:700; text-transform:uppercase;">Top Referrer</p>
+                            <h3 id="stat-top-referrer-name" style="margin:5px 0 0 0; font-size:16px; color:#0f172a; font-weight:800;">Loading...</h3>
+                            <p style="margin:2px 0 0 0; font-size:11px; color:#a21caf; font-weight:600;"><span id="stat-top-referrer-val">0</span> Refs</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" style="padding:20px; border-left: 5px solid #10b981;">
+                    <div style="display:flex; align-items:center; gap:15px;">
+                        <div style="width:50px; height:50px; background:#ecfdf5; color:#047857; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:24px;"><i class="fa-solid fa-bolt"></i></div>
+                        <div>
+                            <p style="margin:0; font-size:12px; color:#64748b; font-weight:700; text-transform:uppercase;">Most Active</p>
+                            <h3 id="stat-most-active-name" style="margin:5px 0 0 0; font-size:16px; color:#0f172a; font-weight:800;">Loading...</h3>
+                            <p style="margin:2px 0 0 0; font-size:11px; color:#047857; font-weight:600;"><span id="stat-most-active-val">0</span> Actions</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="padding:25px;">
                 <h1 style="border:none; margin:0 0 20px 0; font-size:20px; font-weight:800;">Top Earners (Leaderboard)</h1>
                 <table id="top-earners-table">
                     <thead>
@@ -593,6 +659,31 @@
                         </tr>
                     </thead>
                     <tbody id="tasks-body">
+                        <!-- Injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- OFFER CLICKS SECTION -->
+        <div id="sec-offer-clicks" class="section">
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h1>Offer Task Clicks</h1>
+                    <button class="btn btn-gray" onclick="loadOfferClicks()"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+                </div>
+                <p style="font-size: 13px; color: #666; margin-bottom: 20px;">Tracking users who clicked "Claim/Start" on Task Offers.</p>
+                <table id="offer-clicks-table">
+                    <thead>
+                        <tr>
+                            <th>User Name</th>
+                            <th>Email/Details</th>
+                            <th>Offer Title</th>
+                            <th>Reward</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="offer-clicks-body">
                         <!-- Injected via JS -->
                     </tbody>
                 </table>
